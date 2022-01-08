@@ -58,16 +58,17 @@ def tile_generator(x,y,lat,lon,z=14):
             tiles.append(Polygon([(w,s),(e,s),(e,n),(w,n)]))
     return tiles
 
+#Extract borders from gadm.org
 def extract_gadm_borders(path):
-    #Extract borders from gadm.org
     file = open(path,'rb').read()
     k = kml.KML()
-    k.from_string(file)
+    k.from_string(file) #If this throws an an
     f = list(k.features())[0]
     ff = list(f.features())[0]
     fff = list(ff.features())
     return [(el.geometry, el.extended_data.elements[0].data[-1]['value']) for el in fff]
 
+#Get the northern/southern/western/easternmost point of the area
 def get_extreme_points(geometry):
     points = []
     if isinstance(geometry,MultiPolygon):
