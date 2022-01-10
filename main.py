@@ -1,9 +1,12 @@
 from math import *
 from shapely.geometry import Polygon, MultiPolygon
 from fastkml import kml
-
 #Download KMZ files from https://gadm.org/download_country.html
 #and extract the KML file
+
+__version__ = '1.0'
+
+MAX_LATITUDE = 85.0511287798 #degrees(arctan(sinh(pi)))
 
 #------------------------------
 #Taken from:
@@ -47,6 +50,17 @@ def tileEdges(x,y,z=14):
 #------------------------------
 #Not taken from anywhere
 
+#Divide tile into four smaller tiles
+def divide_tile(x,y,z):
+    z += 1
+    x *= 2
+    y *= 2
+    return ((x,y,z),(x+1,y,z),(x,y+1,z),(x+1,y+1,z))
+  
+def tileToPolygon(x,y,z):
+    s,w,n,e=tileEdges(x,y,z)
+    return Polygon([(w,s),(e,s),(e,n),(w,n)])
+
 #Generate tiles from given point South-West (x,y) to North-East (lat, lon)
 def tile_generator(x,y,lat,lon,z=14):
     tiles = []
@@ -62,28 +76,24 @@ def tile_generator(x,y,lat,lon,z=14):
 def extract_gadm_borders(path):
     file = open(path,'rb').read()
     k = kml.KML()
-    k.from_string(file) #If this throws an an
+    k.from_string(file) #In case this throws an error, try using other encodings
     f = list(k.features())[0]
     ff = list(f.features())[0]
     fff = list(ff.features())
     return [(el.geometry, el.extended_data.elements[0].data[-1]['value']) for el in fff]
-
+  
 #Get the northern/southern/western/easternmost point of the area
 def get_extreme_points(geometry):
-    points = []
-    if isinstance(geometry,MultiPolygon):
-        for polygon in geometry.geoms:
-            points.extend(polygon.exterior.coords[:-1])
-    elif isinstance(geometry,Polygon):
-        points = geometry.exterior.coords[:-1]
-    else:
-        raise Exception("Invalid geometry!")
-    xlist = [point[0] for point in points]
-    ylist = [point[1] for point in points]
-    #S, W, N, E
-    return [min(ylist), min(xlist), max(ylist), max(xlist)]
+    #West, South, East, North
+    w, s, e, n = geometry.bounds
+    if abs(n) > MAX_LATITUDE or abs(s) > MAX_LATITUDE:
+        print("Maximum latitude exceeded. No tiles up there")
+    return [s,w,n,e]
 
-def count_tiles(path):
+#Former count tiles function
+#Gives a better progress estimation, but takes longer
+def _count_tiles(path):
+    print("Deprecated!")
     borders = extract_gadm_borders(path)
     for data in borders:
         border, name = data
@@ -92,12 +102,49 @@ def count_tiles(path):
         counter = 0
         #Use the following if you want a progress bar:
         #from tqdm import tqdm
-        #for element in tqdm(tiles)
-        for element in tiles:
-            if border.intersects(element):
-                counter += 1
-        print(counter)
-
+        #counter = tqdm(map(border.intersects, tiles), total=len(tiles))
+        counter = tqdm(map(border.intersects, tiles), total=len(tiles))
+        print(list(counter).count(1))
+     
+#Count tiles
+#path: Path to file
+#names: Only count these areas (if there are several areas)
+#skip_names: Skip these areas (if there are several areas)
+def count_tiles(path, names=[], skip_names=[], down_to=14):
+    borders = extract_gadm_borders(path)
+    for data in borders:
+        tiles = [(0, 0, 1), (1, 0, 1),
+                 (0, 1, 1), (1, 1, 1)] #Level 1 tiles
+        counter = 0
+        border, name = data
+        if (name not in names and len(names)!=0) or name in skip_names:
+            continue
+        print(name,end=", ")
+        while len(tiles) > 0:
+            removing = []
+            adding = []
+            #Use 'for tile in tqdm(tiles)' if you want a progress bar for every zoom level
+            for tile in tiles:
+                polygon = tileToPolygon(*tile)
+                #Calculate the shared area between a tile and the border
+                area = border.intersection(polygon).area
+                #If there whole area of the tile is inside the border, add the number of Level 14 tiles inside
+                if isclose(polygon.area, area):
+                    counter += pow(2,2*(down_to-tile[2]))
+                #If only a bit of the area is inside
+                elif not isclose(area,0):
+                    #If the tile reached the maximum zoom level
+                    if tile[2] == down_to:
+                        counter += 1
+                    else:
+                        #Divide the tile into four smaller tiles (one zoom level higher/lower)
+                        adding.extend(divide_tile(*tile))
+                removing.append(tile)
+            for element in removing:
+                tiles.remove(element)
+            tiles.extend(adding)
+        print(round(counter))
+        
 path = "" #Insert path of file
 count_tiles(path)
 
