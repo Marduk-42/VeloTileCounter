@@ -49,7 +49,9 @@ If not stated otherwise, islands (also small ones) are counted too.
 ### How does it work?
 1. The border data is extracted from the KML file
 2. Starting at zoom level 1 (four tiles for about the entire world), a loop iterates through all tiles and calculate the area of the intersection between the tile and the country.
+
 3.1 If the area of the intersection is equal to the area of the tile, the tile is inside the country, so the number of level 14 tiles within that tile are added
+
 3.2 If the area of the intersection is not zero, but not equal either, the tile will be divided into four smaller tiles (if it has not reached the maximum zoom level yet), which will then be measured in the next loop.
 
 ### To-Do
